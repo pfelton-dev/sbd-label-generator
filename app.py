@@ -1,4 +1,3 @@
-
 import io
 from datetime import date
 import pandas as pd
@@ -8,7 +7,6 @@ from reportlab.lib.pagesizes import inch
 from reportlab.pdfgen import canvas
 from reportlab.lib import colors
 from reportlab.graphics.barcode import code128
-from reportlab.lib.units import inch as rl_inch
 
 
 APP_TITLE = "SBD Carton Label Generator"
@@ -40,7 +38,7 @@ def build_label_rows(
     total_cartons,
 ):
     rows = []
-    for i in range(1, total_cartons + 1):
+    for i in range(1, int(total_cartons) + 1):
         rows.append(
             {
                 "Ship To": ship_to,
@@ -51,15 +49,36 @@ def build_label_rows(
                 "Customer Part #": customer_part,
                 "Qty Per Carton": qty_per_carton,
                 "Ship Date": ship_date,
-                "Carton #": i,
-                "Total Cartons": total_cartons,
-                "Carton Text": carton_text(i, total_cartons),
+                "Container #": i,
+                "Total Containers": total_cartons,
+                "Container Text": carton_text(i, int(total_cartons)),
             }
         )
     return pd.DataFrame(rows)
 
 
-def draw_wrapped_text(c, text, x, y, max_width, font_name="Helvetica", font_size=10, leading=12, max_lines=3):
+def draw_section_line(c, y):
+    c.setStrokeColor(colors.black)
+    c.setLineWidth(1)
+    c.line(0.25 * inch, y, 3.75 * inch, y)
+
+
+def draw_barcode(c, value, x, y, width=1.45 * inch, height=0.35 * inch):
+    value = clean_text(value)
+    if not value:
+        return
+
+    barcode = code128.Code128(value, barHeight=height, barWidth=0.011 * inch)
+    scale = min(1, width / barcode.width) if barcode.width else 1
+
+    c.saveState()
+    c.translate(x, y)
+    c.scale(scale, 1)
+    barcode.drawOn(c, 0, 0)
+    c.restoreState()
+
+
+def draw_wrapped_text(c, text, x, y, max_width, font_name="Helvetica-Bold", font_size=10, leading=12, max_lines=3):
     c.setFont(font_name, font_size)
     words = clean_text(text).split()
     lines = []
@@ -73,6 +92,7 @@ def draw_wrapped_text(c, text, x, y, max_width, font_name="Helvetica", font_size
             if current:
                 lines.append(current)
             current = word
+
     if current:
         lines.append(current)
 
@@ -85,109 +105,89 @@ def draw_wrapped_text(c, text, x, y, max_width, font_name="Helvetica", font_size
     return y
 
 
-def draw_barcode(c, value, x, y, width=2.8 * inch, height=0.38 * inch):
-    value = clean_text(value)
-    if not value:
-        return
-
-    barcode = code128.Code128(value, barHeight=height, barWidth=0.012 * inch)
-    barcode_width = barcode.width
-    scale = min(1, width / barcode_width) if barcode_width else 1
-
-    c.saveState()
-    c.translate(x, y)
-    c.scale(scale, 1)
-    barcode.drawOn(c, 0, 0)
-    c.restoreState()
-
-
-def draw_section_line(c, y):
-    c.setStrokeColor(colors.black)
-    c.setLineWidth(1)
-    c.line(0.25 * inch, y, 3.75 * inch, y)
-
-
 def create_pdf(df):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
 
     for _, row in df.iterrows():
-        # Outer border
         c.setStrokeColor(colors.black)
         c.setLineWidth(1.25)
         c.rect(0.18 * inch, 0.18 * inch, 3.64 * inch, 5.64 * inch)
 
         # Header
-        c.setFont("Helvetica-Bold", 11)
+        c.setFont("Helvetica-Bold", 10)
         c.drawString(0.32 * inch, 5.52 * inch, "SHIP TO:")
-        c.setFont("Helvetica-Bold", 13)
-        c.drawString(1.15 * inch, 5.52 * inch, clean_text(row["Ship To"])[:28])
+        c.setFont("Helvetica-Bold", 10)
+        c.drawString(1.15 * inch, 5.52 * inch, clean_text(row["Ship To"])[:30])
 
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 5.28 * inch, "FROM:")
-        c.setFont("Helvetica", 10)
-        c.drawString(1.15 * inch, 5.28 * inch, clean_text(row["From"])[:32])
-
-        draw_section_line(c, 5.08 * inch)
-
-        # Job #
+        c.drawString(0.32 * inch, 5.31 * inch, "FROM:")
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 4.86 * inch, "JOB #")
-        draw_barcode(c, row["Job #"], 0.32 * inch, 4.39 * inch)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawCentredString(2.0 * inch, 4.20 * inch, clean_text(row["Job #"]))
+        c.drawString(1.15 * inch, 5.31 * inch, clean_text(row["From"])[:30])
 
-        draw_section_line(c, 4.05 * inch)
+        draw_section_line(c, 5.10 * inch)
 
-        # PO #
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 3.83 * inch, "CUSTOMER PO #")
-        draw_barcode(c, row["PO #"], 0.32 * inch, 3.36 * inch)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawCentredString(2.0 * inch, 3.17 * inch, clean_text(row["PO #"]))
+        # Top row: Job + PO side by side
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(0.32 * inch, 4.91 * inch, "JOB #")
+        c.drawString(2.05 * inch, 4.91 * inch, "CUSTOMER PO #")
 
-        draw_section_line(c, 3.02 * inch)
+        draw_barcode(c, row["Job #"], 0.45 * inch, 4.43 * inch, width=1.35 * inch)
+        draw_barcode(c, row["PO #"], 2.13 * inch, 4.43 * inch, width=1.45 * inch)
 
-        # Description
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 2.80 * inch, "DESCRIPTION")
+        c.setFont("Helvetica", 8)
+        c.drawCentredString(1.12 * inch, 4.26 * inch, clean_text(row["Job #"]))
+        c.drawCentredString(2.85 * inch, 4.26 * inch, clean_text(row["PO #"]))
+
+        draw_section_line(c, 4.08 * inch)
+
+        # Qty + Description
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(0.32 * inch, 3.88 * inch, "QTY:")
+        draw_barcode(c, row["Qty Per Carton"], 0.65 * inch, 3.46 * inch, width=1.20 * inch)
+        c.setFont("Helvetica", 8)
+        c.drawCentredString(1.25 * inch, 3.30 * inch, clean_text(row["Qty Per Carton"]))
+
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(2.05 * inch, 3.88 * inch, "DESCRIPTION:")
         draw_wrapped_text(
             c,
             row["Description"],
-            0.32 * inch,
-            2.60 * inch,
-            3.36 * inch,
+            2.05 * inch,
+            3.68 * inch,
+            1.55 * inch,
             font_name="Helvetica-Bold",
-            font_size=10,
-            leading=12,
-            max_lines=3,
+            font_size=8.5,
+            leading=10,
+            max_lines=4,
         )
 
-        draw_section_line(c, 2.05 * inch)
+        draw_section_line(c, 3.12 * inch)
 
-        # Qty / Part / Date
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 1.84 * inch, "QTY:")
-        c.setFont("Helvetica", 10)
-        c.drawString(0.90 * inch, 1.84 * inch, clean_text(row["Qty Per Carton"]))
+        # Customer Part #
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(0.32 * inch, 2.93 * inch, "CUSTOMER PART #:")
 
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 1.62 * inch, "CUSTOMER PART #:")
-        c.setFont("Helvetica", 10)
-        c.drawString(1.72 * inch, 1.62 * inch, clean_text(row["Customer Part #"])[:22])
+        draw_barcode(c, row["Customer Part #"], 1.18 * inch, 2.45 * inch, width=1.70 * inch)
 
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 1.40 * inch, "SHIP DATE:")
-        c.setFont("Helvetica", 10)
-        c.drawString(1.32 * inch, 1.40 * inch, clean_text(row["Ship Date"]))
+        c.setFont("Helvetica", 8)
+        c.drawCentredString(2.0 * inch, 2.28 * inch, clean_text(row["Customer Part #"]))
 
-        draw_section_line(c, 1.20 * inch)
+        draw_section_line(c, 2.08 * inch)
 
-        # Carton
-        c.setFont("Helvetica-Bold", 10)
-        c.drawString(0.32 * inch, 0.98 * inch, "CARTON")
-        c.setFont("Helvetica-Bold", 24)
-        c.drawCentredString(2.0 * inch, 0.57 * inch, clean_text(row["Carton Text"]))
+        # Date + Container
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(0.32 * inch, 1.88 * inch, "DATE:")
+        draw_barcode(c, row["Ship Date"], 0.70 * inch, 1.48 * inch, width=1.30 * inch)
+
+        c.setFont("Helvetica", 8)
+        c.drawCentredString(1.35 * inch, 1.31 * inch, clean_text(row["Ship Date"]))
+
+        c.setFont("Helvetica-Bold", 9)
+        c.drawString(2.25 * inch, 1.88 * inch, "CONTAINER")
+
+        c.setFont("Helvetica-Bold", 17)
+        c.drawCentredString(3.0 * inch, 1.35 * inch, clean_text(row["Container Text"]))
 
         c.showPage()
 
@@ -201,91 +201,235 @@ def create_excel(df):
     with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
         df.to_excel(writer, index=False, sheet_name="SBD Labels")
         ws = writer.book["SBD Labels"]
+
         for col in ws.columns:
             max_len = max(len(str(cell.value)) if cell.value is not None else 0 for cell in col)
             ws.column_dimensions[col[0].column_letter].width = min(max_len + 2, 35)
+
     buffer.seek(0)
     return buffer.getvalue()
+
+
+def normalize_uploaded_columns(df):
+    rename_map = {}
+
+    for col in df.columns:
+        c = str(col).strip().lower()
+
+        if c in ["ship to", "ship_to", "customer"]:
+            rename_map[col] = "Ship To"
+        elif c in ["from", "ship from", "ship_from"]:
+            rename_map[col] = "From"
+        elif c in ["job #", "job", "job no", "job number"]:
+            rename_map[col] = "Job #"
+        elif c in ["po #", "po", "po number", "customer po", "customer po #"]:
+            rename_map[col] = "PO #"
+        elif c in ["description", "desc"]:
+            rename_map[col] = "Description"
+        elif c in ["customer part #", "customer part", "part #", "part number", "part"]:
+            rename_map[col] = "Customer Part #"
+        elif c in ["qty per carton", "qty", "quantity", "quantity per carton"]:
+            rename_map[col] = "Qty Per Carton"
+        elif c in ["ship date", "date"]:
+            rename_map[col] = "Ship Date"
+        elif c in ["total cartons", "cartons", "total containers", "containers"]:
+            rename_map[col] = "Total Cartons"
+
+    return df.rename(columns=rename_map)
 
 
 st.set_page_config(page_title=APP_TITLE, page_icon="🏷️", layout="centered")
 
 st.title("🏷️ SBD Carton Label Generator")
-st.caption("Generates 4 × 6 carton labels with automatic carton numbering.")
+st.caption("Generates 4 × 6 carton labels with automatic container numbering.")
 
-with st.form("label_form"):
-    st.subheader("Shipment Information")
+tabs = st.tabs(["Manual Entry", "Import Excel"])
 
-    ship_to = st.text_input("Ship To", value="Stanley Black & Decker")
-    ship_from = st.text_input("From", value="Sterling Digital Print")
+with tabs[0]:
+    with st.form("manual_form"):
+        st.subheader("Shipment Information")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        job_number = st.text_input("Job #", value="")
-        po_number = st.text_input("PO #", value="")
-        qty_per_carton = st.text_input("Qty Per Carton", value="")
-    with col2:
-        customer_part = st.text_input("Customer Part #", value="")
-        ship_date_value = st.date_input("Ship Date", value=date.today())
-        total_cartons = st.number_input("Total Cartons", min_value=1, max_value=5000, value=1, step=1)
+        ship_to = st.text_input("Ship To", value="Stanley Black & Decker")
+        ship_from = st.text_input("From", value="Sterling Digital Print")
 
-    description = st.text_area("Description", value="", height=80)
+        col1, col2 = st.columns(2)
 
-    submitted = st.form_submit_button("Generate Labels")
+        with col1:
+            job_number = st.text_input("Job #", value="")
+            po_number = st.text_input("PO #", value="")
+            qty_per_carton = st.text_input("Qty Per Carton", value="")
 
-if submitted:
-    errors = []
+        with col2:
+            customer_part = st.text_input("Customer Part #", value="")
+            ship_date_value = st.date_input("Ship Date", value=date.today())
+            total_cartons = st.number_input("Total Cartons", min_value=1, max_value=5000, value=1, step=1)
 
-    if not clean_text(job_number):
-        errors.append("Job # is required.")
-    if not clean_text(po_number):
-        errors.append("PO # is required.")
-    if not clean_text(description):
-        errors.append("Description is required.")
-    if not clean_text(customer_part):
-        errors.append("Customer Part # is required.")
-    if not clean_text(qty_per_carton):
-        errors.append("Qty Per Carton is required.")
+        description = st.text_area("Description", value="", height=80)
 
-    if errors:
-        for error in errors:
-            st.error(error)
-    else:
-        ship_date_text = ship_date_value.strftime("%m/%d/%Y")
+        submitted = st.form_submit_button("Generate Labels")
 
-        df = build_label_rows(
-            ship_to=clean_text(ship_to),
-            ship_from=clean_text(ship_from),
-            job_number=clean_text(job_number),
-            po_number=clean_text(po_number),
-            description=clean_text(description),
-            customer_part=clean_text(customer_part),
-            qty_per_carton=clean_text(qty_per_carton),
-            ship_date=ship_date_text,
-            total_cartons=int(total_cartons),
-        )
+    if submitted:
+        errors = []
 
-        pdf_bytes = create_pdf(df)
-        excel_bytes = create_excel(df)
+        if not clean_text(job_number):
+            errors.append("Job # is required.")
+        if not clean_text(po_number):
+            errors.append("PO # is required.")
+        if not clean_text(description):
+            errors.append("Description is required.")
+        if not clean_text(customer_part):
+            errors.append("Customer Part # is required.")
+        if not clean_text(qty_per_carton):
+            errors.append("Qty Per Carton is required.")
 
-        st.success(f"Generated {len(df)} label(s).")
+        if errors:
+            for error in errors:
+                st.error(error)
+        else:
+            ship_date_text = ship_date_value.strftime("%m/%d/%Y")
 
-        st.download_button(
-            label="Download PDF Labels",
-            data=pdf_bytes,
-            file_name=f"SBD_Labels_{clean_text(job_number)}.pdf",
-            mime="application/pdf",
-        )
+            df = build_label_rows(
+                ship_to=clean_text(ship_to),
+                ship_from=clean_text(ship_from),
+                job_number=clean_text(job_number),
+                po_number=clean_text(po_number),
+                description=clean_text(description),
+                customer_part=clean_text(customer_part),
+                qty_per_carton=clean_text(qty_per_carton),
+                ship_date=ship_date_text,
+                total_cartons=int(total_cartons),
+            )
 
-        st.download_button(
-            label="Download Excel Label Data",
-            data=excel_bytes,
-            file_name=f"SBD_Label_Data_{clean_text(job_number)}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        )
+            pdf_bytes = create_pdf(df)
+            excel_bytes = create_excel(df)
 
-        st.subheader("Preview Data")
-        st.dataframe(df.head(20), use_container_width=True)
+            st.success(f"Generated {len(df)} label(s).")
 
-        if len(df) > 20:
-            st.caption("Showing first 20 rows only.")
+            st.download_button(
+                label="Download PDF Labels",
+                data=pdf_bytes,
+                file_name=f"SBD_Labels_{clean_text(job_number)}.pdf",
+                mime="application/pdf",
+            )
+
+            st.download_button(
+                label="Download Excel Label Data",
+                data=excel_bytes,
+                file_name=f"SBD_Label_Data_{clean_text(job_number)}.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+
+            st.subheader("Preview Data")
+            st.dataframe(df.head(20), use_container_width=True)
+
+            if len(df) > 20:
+                st.caption("Showing first 20 rows only.")
+
+with tabs[1]:
+    st.subheader("Import Excel File")
+
+    st.write(
+        "Upload an Excel file with columns like: Job #, PO #, Description, Customer Part #, Qty Per Carton, Ship Date, Total Cartons."
+    )
+
+    sample_df = pd.DataFrame(
+        [
+            {
+                "Ship To": "Stanley Black & Decker",
+                "From": "Sterling Digital Print",
+                "Job #": "469380",
+                "PO #": "5764295",
+                "Description": "DCS565, DCS566 SAW MANUAL 32PG",
+                "Customer Part #": "NA494285",
+                "Qty Per Carton": "540",
+                "Ship Date": "06/09/2026",
+                "Total Cartons": 52,
+            }
+        ]
+    )
+
+    sample_excel = create_excel(sample_df)
+
+    st.download_button(
+        label="Download Sample Excel Template",
+        data=sample_excel,
+        file_name="SBD_Label_Template.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
+
+    uploaded_file = st.file_uploader("Upload Excel File", type=["xlsx"])
+
+    if uploaded_file:
+        try:
+            imported = pd.read_excel(uploaded_file)
+            imported = normalize_uploaded_columns(imported)
+
+            required_cols = [
+                "Job #",
+                "PO #",
+                "Description",
+                "Customer Part #",
+                "Qty Per Carton",
+                "Ship Date",
+                "Total Cartons",
+            ]
+
+            missing = [col for col in required_cols if col not in imported.columns]
+
+            if missing:
+                st.error("Missing required columns: " + ", ".join(missing))
+            else:
+                all_rows = []
+
+                for _, r in imported.iterrows():
+                    ship_to_value = clean_text(r.get("Ship To", "Stanley Black & Decker")) or "Stanley Black & Decker"
+                    ship_from_value = clean_text(r.get("From", "Sterling Digital Print")) or "Sterling Digital Print"
+
+                    total = int(r["Total Cartons"])
+
+                    ship_date_raw = r["Ship Date"]
+                    if isinstance(ship_date_raw, pd.Timestamp):
+                        ship_date_text = ship_date_raw.strftime("%m/%d/%Y")
+                    else:
+                        ship_date_text = clean_text(ship_date_raw)
+
+                    temp_df = build_label_rows(
+                        ship_to=ship_to_value,
+                        ship_from=ship_from_value,
+                        job_number=clean_text(r["Job #"]),
+                        po_number=clean_text(r["PO #"]),
+                        description=clean_text(r["Description"]),
+                        customer_part=clean_text(r["Customer Part #"]),
+                        qty_per_carton=clean_text(r["Qty Per Carton"]),
+                        ship_date=ship_date_text,
+                        total_cartons=total,
+                    )
+
+                    all_rows.append(temp_df)
+
+                final_df = pd.concat(all_rows, ignore_index=True)
+
+                pdf_bytes = create_pdf(final_df)
+                excel_bytes = create_excel(final_df)
+
+                st.success(f"Generated {len(final_df)} label(s) from uploaded file.")
+
+                st.download_button(
+                    label="Download PDF Labels",
+                    data=pdf_bytes,
+                    file_name="SBD_Imported_Labels.pdf",
+                    mime="application/pdf",
+                )
+
+                st.download_button(
+                    label="Download Excel Label Data",
+                    data=excel_bytes,
+                    file_name="SBD_Imported_Label_Data.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                )
+
+                st.subheader("Preview Imported Data")
+                st.dataframe(final_df.head(50), use_container_width=True)
+
+        except Exception as e:
+            st.error(f"Could not process file: {e}")
