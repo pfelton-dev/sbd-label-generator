@@ -24,7 +24,7 @@ CUSTOMER_TEMPLATES = {
     },
     "ADM-Indicia": {
         "ship_to": "ADM-Indicia",
-        "ship_from": "Sterling Digital Print",
+        "ship_from": "Konica Minolta",
     },
     "US Foods": {
         "ship_to": "US Foods",
