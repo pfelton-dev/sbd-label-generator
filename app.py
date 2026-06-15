@@ -18,12 +18,8 @@ LABEL_HEIGHT = 6 * inch
 
 
 CUSTOMER_TEMPLATES = {
-    "Stanley Black & Decker": {
+    "Stanley / ADM": {
         "ship_to": "Stanley Black & Decker",
-        "ship_from": "Sterling Digital Print",
-    },
-    "ADM-Indicia": {
-        "ship_to": "ADM-Indicia",
         "ship_from": "Konica Minolta",
     },
     "US Foods": {
